@@ -1,0 +1,61 @@
+---
+- name: Update apt cache and upgrade packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: safe
+
+- name: Install security packages
+  ansible.builtin.apt:
+    name: [ufw, fail2ban, unattended-upgrades, curl, restic, rsync]
+    state: present
+
+- name: Harden SSH
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?{{ item.key }}"
+    line: "{{ item.key }} {{ item.value }}"
+    validate: "sshd -t -f %s"
+  loop:
+    - { key: PermitRootLogin, value: "no" }
+    - { key: PasswordAuthentication, value: "no" }
+    - { key: MaxAuthTries, value: "3" }
+  notify: Restart ssh
+
+- name: UFW default deny incoming
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: UFW allow required ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: ["22", "80", "443"]
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Enable fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: true
+
+- name: Kernel hardening (sysctl)
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+  loop:
+    - { name: net.ipv4.tcp_syncookies, value: "1" }
+    - { name: net.ipv4.conf.all.rp_filter, value: "1" }
+    - { name: net.ipv4.conf.all.accept_redirects, value: "0" }
+
+- name: Schedule daily backup at 03:00
+  ansible.builtin.cron:
+    name: homelab backup
+    minute: "0"
+    hour: "3"
+    job: "/opt/homelab/scripts/backup.sh >> /var/log/homelab-backup.log 2>&1"

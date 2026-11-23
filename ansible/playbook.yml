@@ -1,0 +1,8 @@
+---
+- name: Homelab IaC v14 - Ahmed A. Akmal (Mr.Deffult)
+  hosts: homelab
+  become: true
+  roles:
+    - hardening
+    - docker
+    - monitoring
